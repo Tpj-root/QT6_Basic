@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Billing System</title>
+</head>
+<body>
+<h2>Products</h2>
+<table border="1" id="productTable">
+    <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Price</th>
+    </tr>
+</table>
+
+<script>
+async function loadProducts() {
+    const res = await fetch("http://127.0.0.1:8000/products");
+    const products = await res.json();
+    const table = document.getElementById("productTable");
+
+    products.forEach(p => {
+        const row = table.insertRow();
+        row.insertCell(0).innerText = p.id;
+        row.insertCell(1).innerText = p.name;
+        row.insertCell(2).innerHTML = `<input type="number" value="${p.price}" data-id="${p.id}" onchange="updatePrice(this)">`;
+    });
+}
+
+async function updatePrice(input) {
+    const id = input.dataset.id;
+    const price = parseFloat(input.value);
+    await fetch("http://127.0.0.1:8000/update-price", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id: parseInt(id), price})
+    });
+}
+
+loadProducts();
+</script>
+</body>
+</html>
+
