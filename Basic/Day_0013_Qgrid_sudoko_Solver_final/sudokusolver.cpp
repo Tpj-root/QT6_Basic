@@ -6,8 +6,10 @@
 #include <QDateTime>
 #include <QFile>
 #include <QTextStream>
+#include <QDebug>
+#include <QProcess>
 
-SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent)
+SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent), process(nullptr)
 {
     // Initialize grid to nullptr
     for (int i = 0; i < 9; ++i) {
@@ -16,8 +18,8 @@ SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent)
         }
     }
     
-    setWindowTitle("Sudoku Solver");
-    setFixedSize(800, 700);
+    setWindowTitle("Sudoku Solver with Device Control");
+    setFixedSize(900, 800);
     
     setupUI();
     connectSignals();
@@ -28,10 +30,68 @@ void SudokuSolver::setupUI()
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     
     // Title
-    QLabel *titleLabel = new QLabel("Sudoku Solver - 9×9 Grid", this);
-    titleLabel->setStyleSheet("font-size: 18px; font-weight: bold; color: blue; padding: 10px;");
+    QLabel *titleLabel = new QLabel("🧩 Sudoku Solver with Device Control 📱", this);
+    titleLabel->setStyleSheet("font-size: 20px; font-weight: bold; color: blue; padding: 10px;");
     titleLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(titleLabel);
+    
+    // Device Control Section
+    QLabel *deviceLabel = new QLabel("Device Control:", this);
+    deviceLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #2E7D32; margin-top: 10px;");
+    mainLayout->addWidget(deviceLabel);
+    
+    // Device control buttons
+    QHBoxLayout *deviceLayout = new QHBoxLayout();
+    
+    androidConnectButton = new QPushButton("📱 Connect Android Device", this);
+    gcodeSendButton = new QPushButton("⚙️ Send G-code", this);
+    
+    androidConnectButton->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #FF9800;"
+        "   color: white;"
+        "   font-weight: bold;"
+        "   padding: 12px;"
+        "   font-size: 14px;"
+        "   border-radius: 5px;"
+        "}"
+        "QPushButton:hover { background-color: #F57C00; }"
+        "QPushButton:pressed { background-color: #EF6C00; }"
+    );
+    
+    gcodeSendButton->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #9C27B0;"
+        "   color: white;"
+        "   font-weight: bold;"
+        "   padding: 12px;"
+        "   font-size: 14px;"
+        "   border-radius: 5px;"
+        "}"
+        "QPushButton:hover { background-color: #7B1FA2; }"
+        "QPushButton:pressed { background-color: #6A1B9A; }"
+    );
+    
+    deviceLayout->addWidget(androidConnectButton);
+    deviceLayout->addWidget(gcodeSendButton);
+    mainLayout->addLayout(deviceLayout);
+    
+    // Status label for device operations
+    statusLabel = new QLabel("Ready to connect devices...", this);
+    statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #E3F2FD; border: 1px solid #2196F3; border-radius: 5px;");
+    statusLabel->setAlignment(Qt::AlignCenter);
+    mainLayout->addWidget(statusLabel);
+    
+    // Separator
+    QLabel *separator = new QLabel("────────────────────────────────────────", this);
+    separator->setStyleSheet("color: #ccc; margin: 10px 0;");
+    separator->setAlignment(Qt::AlignCenter);
+    mainLayout->addWidget(separator);
+    
+    // Sudoku Section
+    QLabel *sudokuLabel = new QLabel("Sudoku Solver:", this);
+    sudokuLabel->setStyleSheet("font-size: 16px; font-weight: bold; color: #D32F2F;");
+    mainLayout->addWidget(sudokuLabel);
     
     // Instructions
     QLabel *instructionLabel = new QLabel(
@@ -49,8 +109,8 @@ void SudokuSolver::setupUI()
     setupGrid();
     mainLayout->addWidget(gridContainer);
     
-    // Buttons layout
-    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    // Sudoku buttons layout
+    QHBoxLayout *sudokuButtonLayout = new QHBoxLayout();
     
     solveButton = new QPushButton("🧩 Solve Sudoku", this);
     clearButton = new QPushButton("🗑️ Clear Grid", this);
@@ -89,10 +149,10 @@ void SudokuSolver::setupUI()
         "QPushButton:hover { background-color: #1976D2; }"
     );
     
-    buttonLayout->addWidget(solveButton);
-    buttonLayout->addWidget(clearButton);
-    buttonLayout->addWidget(generateButton);
-    mainLayout->addLayout(buttonLayout);
+    sudokuButtonLayout->addWidget(solveButton);
+    sudokuButtonLayout->addWidget(clearButton);
+    sudokuButtonLayout->addWidget(generateButton);
+    mainLayout->addLayout(sudokuButtonLayout);
     
     // Output area
     QLabel *outputLabel = new QLabel("Solution Output:", this);
@@ -110,7 +170,7 @@ void SudokuSolver::setupUI()
         "   background-color: #f9f9f9;"
         "}"
     );
-    outputTextEdit->setFixedHeight(200);
+    outputTextEdit->setFixedHeight(150);
     mainLayout->addWidget(outputTextEdit);
     
     setLayout(mainLayout);
@@ -163,12 +223,17 @@ void SudokuSolver::setupGrid()
 
 void SudokuSolver::connectSignals()
 {
+    // Sudoku buttons
     connect(solveButton, &QPushButton::clicked, this, &SudokuSolver::solveSudoku);
     connect(clearButton, &QPushButton::clicked, this, &SudokuSolver::clearGrid);
     connect(generateButton, &QPushButton::clicked, this, &SudokuSolver::generateOutput);
+    
+    // Device control buttons
+    connect(androidConnectButton, &QPushButton::clicked, this, &SudokuSolver::connectAndroidDevice);
+    connect(gcodeSendButton, &QPushButton::clicked, this, &SudokuSolver::sendGcode);
 }
 
-// Your Sudoku solving algorithm implementation
+// Sudoku solving algorithm implementation
 constexpr std::size_t SudokuSolver::get_cell(std::size_t row, std::size_t col) noexcept
 {
     return (row / 3) * 3 + col / 3;
@@ -316,72 +381,7 @@ void SudokuSolver::clearGrid()
         }
     }
     outputTextEdit->clear();
-    
-    // Reset the stored original values when clearing
-    // (if you're using the static approach)
-    // isOriginalStored = false;
 }
-
-//void SudokuSolver::generateOutput()
-//{
-//    QString output;
-//    
-//    for (int row = 0; row < 9; ++row) {
-//        for (int col = 0; col < 9; ++col) {
-//            QString value = inputGrid[row][col]->text().trimmed();
-//            
-//            if (value.isEmpty()) {
-//                output += "#";
-//            } else {
-//                output += value;
-//            }
-//            
-//            if (col < 8) {
-//                output += " ";
-//            }
-//        }
-//        
-//        if (row < 8) {
-//            output += "\n";
-//        }
-//    }
-//    
-//    outputTextEdit->setPlainText(output);
-//}
-
-// // only sol
-// void SudokuSolver::generateOutput()
-// {
-//     QString output;
-//     
-//     for (int row = 0; row < 9; ++row) {
-//         for (int col = 0; col < 9; ++col) {
-//             // Check if cell background is green (solved cells)
-//             QString style = inputGrid[row][col]->styleSheet();
-//             QString currentValue = inputGrid[row][col]->text().trimmed();
-//             
-//             // If cell has green background (solved) and has value, show the number
-//             // Otherwise show #
-//             if (style.contains("background-color: #e8f5e8") && !currentValue.isEmpty()) {
-//                 output += currentValue;
-//             } else {
-//                 output += "#";
-//             }
-//             
-//             if (col < 8) {
-//                 output += "";
-//             }
-//         }
-//         
-//         if (row < 8) {
-//             output += "\n";
-//         }
-//     }
-//     
-//     outputTextEdit->setPlainText(output);
-// }
-// 
-
 
 void SudokuSolver::generateOutput()
 {
@@ -389,19 +389,14 @@ void SudokuSolver::generateOutput()
     
     for (int row = 0; row < 9; ++row) {
         for (int col = 0; col < 9; ++col) {
-            // Check if cell background is green (solved cells)
             QString style = inputGrid[row][col]->styleSheet();
             QString currentValue = inputGrid[row][col]->text().trimmed();
             
-            // If cell has green background (solved) and has value, show the number
-            // Otherwise show #
             if (style.contains("background-color: #e8f5e8") && !currentValue.isEmpty()) {
                 output += currentValue;
             } else {
                 output += "#";
             }
-            
-            // Removed space between columns - no separator
         }
         
         if (row < 8) {
@@ -409,7 +404,6 @@ void SudokuSolver::generateOutput()
         }
     }
     
-    // Display in output text box
     outputTextEdit->setPlainText(output);
     
     // Save to file
@@ -419,9 +413,116 @@ void SudokuSolver::generateOutput()
         stream << output;
         file.close();
         
-        // Show success message
         QMessageBox::information(this, "Success", "Solution saved to 'file_solution.txt' ✅");
     } else {
         QMessageBox::warning(this, "Error", "Could not save to file! ❌");
     }
+}
+
+void SudokuSolver::connectAndroidDevice()
+{
+    statusLabel->setText("🔄 Connecting to Android device...");
+    statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFF3E0; border: 1px solid #FF9800; border-radius: 5px;");
+    
+    // Run ADB connect command
+    QProcess *adbProcess = new QProcess(this);
+    connect(adbProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            [this, adbProcess](int exitCode, QProcess::ExitStatus exitStatus) {
+        if (exitCode == 0) {
+            statusLabel->setText("✅ Android device connected successfully!");
+            statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #E8F5E8; border: 1px solid #4CAF50; border-radius: 5px;");
+        } else {
+            statusLabel->setText("❌ Failed to connect to Android device");
+            statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
+        }
+        adbProcess->deleteLater();
+    });
+    
+    connect(adbProcess, &QProcess::errorOccurred, [this](QProcess::ProcessError error) {
+        statusLabel->setText("❌ Error connecting to Android device");
+        statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
+    });
+    
+    adbProcess->start("adb", QStringList() << "connect" << "192.168.1.3:5555");
+}
+
+void SudokuSolver::sendGcode()
+{
+    statusLabel->setText("🔄 Sending G-code commands...");
+    statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #F3E5F5; border: 1px solid #9C27B0; border-radius: 5px;");
+    
+    // Check if gcode_gen.out exists
+    QFile gcodeFile("./gcode_gen.out");
+    if (!gcodeFile.exists()) {
+        statusLabel->setText("❌ gcode_gen.out not found in current directory!");
+        statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
+        return;
+    }
+    
+    // Make sure the file is executable
+    QFile::setPermissions("./gcode_gen.out", 
+        QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+        QFile::ReadGroup | QFile::ExeGroup |
+        QFile::ReadOther | QFile::ExeOther);
+    
+    // Run gcode_gen.out
+    process = new QProcess(this);
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &SudokuSolver::onProcessFinished);
+    connect(process, &QProcess::errorOccurred, this, &SudokuSolver::onProcessError);
+    
+    // Connect to readyRead signal to capture output
+    connect(process, &QProcess::readyReadStandardOutput, [this]() {
+        QByteArray output = process->readAllStandardOutput();
+        QString outputText = QString::fromLocal8Bit(output);
+        statusLabel->setText("📤 G-code output: " + outputText.trimmed());
+    });
+    
+    connect(process, &QProcess::readyReadStandardError, [this]() {
+        QByteArray error = process->readAllStandardError();
+        QString errorText = QString::fromLocal8Bit(error);
+        statusLabel->setText("❌ G-code error: " + errorText.trimmed());
+    });
+    
+    process->start("./gcode_gen.out");
+}
+
+void SudokuSolver::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    if (exitCode == 0 && exitStatus == QProcess::NormalExit) {
+        statusLabel->setText("✅ G-code commands sent successfully!");
+        statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #E8F5E8; border: 1px solid #4CAF50; border-radius: 5px;");
+    } else {
+        statusLabel->setText("❌ G-code execution failed with exit code: " + QString::number(exitCode));
+        statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
+    }
+    process->deleteLater();
+    process = nullptr;
+}
+
+void SudokuSolver::onProcessError(QProcess::ProcessError error)
+{
+    QString errorMsg;
+    switch (error) {
+        case QProcess::FailedToStart:
+            errorMsg = "Failed to start gcode_gen.out";
+            break;
+        case QProcess::Crashed:
+            errorMsg = "gcode_gen.out crashed";
+            break;
+        case QProcess::Timedout:
+            errorMsg = "gcode_gen.out timed out";
+            break;
+        case QProcess::WriteError:
+            errorMsg = "Write error to gcode_gen.out";
+            break;
+        case QProcess::ReadError:
+            errorMsg = "Read error from gcode_gen.out";
+            break;
+        default:
+            errorMsg = "Unknown error";
+    }
+    
+    statusLabel->setText("❌ " + errorMsg);
+    statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
 }
