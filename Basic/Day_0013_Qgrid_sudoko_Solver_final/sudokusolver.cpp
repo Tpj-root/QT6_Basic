@@ -23,7 +23,7 @@ SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent), process(nullptr)
     }
     
     setWindowTitle("Sudoku Solver with Device Control");
-    setFixedSize(500, 900);
+    setFixedSize(450, 900);
     
     setupUI();
     connectSignals();
