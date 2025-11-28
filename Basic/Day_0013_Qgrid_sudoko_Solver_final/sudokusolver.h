@@ -11,6 +11,8 @@
 #include <vector>
 #include <array>
 #include <bitset>
+#include <QKeyEvent>
+#include <QTimer>
 
 class SudokuSolver : public QWidget
 {
@@ -27,6 +29,13 @@ private slots:
     void sendGcode();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onProcessError(QProcess::ProcessError error);
+    void onTextChanged(const QString &text);
+    void onReturnPressed();
+    void moveToNextCell(int currentRow, int currentCol);
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 
 private:
     void setupUI();
@@ -57,5 +66,7 @@ private:
     
     QProcess *process;
 };
+
+
 
 #endif // SUDOKUSOLVER_H

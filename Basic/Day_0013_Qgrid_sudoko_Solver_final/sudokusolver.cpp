@@ -8,6 +8,10 @@
 #include <QTextStream>
 #include <QDebug>
 #include <QProcess>
+#include <QTimer>
+#include <QKeyEvent>
+#include <QTimer>
+#include <QDebug>
 
 SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent), process(nullptr)
 {
@@ -19,7 +23,7 @@ SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent), process(nullptr)
     }
     
     setWindowTitle("Sudoku Solver with Device Control");
-    setFixedSize(900, 800);
+    setFixedSize(500, 900);
     
     setupUI();
     connectSignals();
@@ -215,9 +219,71 @@ void SudokuSolver::setupGrid()
             input->setStyleSheet(style);
             input->setFixedSize(40, 40);
             
+            // Store row and col as properties for easy access
+            input->setProperty("row", row);
+            input->setProperty("col", col);
+            
             gridLayout->addWidget(input, row, col);
             inputGrid[row][col] = input;
+            
+            // Connect text changed signal for auto navigation
+            connect(input, &QLineEdit::textChanged, this, &SudokuSolver::onTextChanged);
+            
+            // Connect key press events for arrow key navigation
+            connect(input, &QLineEdit::returnPressed, this, &SudokuSolver::onReturnPressed);
         }
+    }
+    
+    // Set focus to first cell
+    if (inputGrid[0][0]) {
+        inputGrid[0][0]->setFocus();
+    }
+}
+
+
+void SudokuSolver::onTextChanged(const QString &text)
+{
+    QLineEdit *senderEdit = qobject_cast<QLineEdit*>(sender());
+    if (!senderEdit || text.isEmpty()) return;
+    
+    int row = senderEdit->property("row").toInt();
+    int col = senderEdit->property("col").toInt();
+    
+    // Move to next cell after input
+    QTimer::singleShot(50, this, [this, row, col]() {
+        moveToNextCell(row, col);
+    });
+}
+
+void SudokuSolver::onReturnPressed()
+{
+    QLineEdit *senderEdit = qobject_cast<QLineEdit*>(sender());
+    if (!senderEdit) return;
+    
+    int row = senderEdit->property("row").toInt();
+    int col = senderEdit->property("col").toInt();
+    
+    moveToNextCell(row, col);
+}
+
+void SudokuSolver::moveToNextCell(int currentRow, int currentCol)
+{
+    int nextRow = currentRow;
+    int nextCol = currentCol + 1;
+    
+    if (nextCol >= 9) {
+        nextCol = 0;
+        nextRow++;
+        
+        if (nextRow >= 9) {
+            nextRow = 0; // Wrap around to beginning
+        }
+    }
+    
+    // Find next empty cell or just move to next position
+    if (inputGrid[nextRow][nextCol]) {
+        inputGrid[nextRow][nextCol]->setFocus();
+        inputGrid[nextRow][nextCol]->selectAll(); // Select text for easy replacement
     }
 }
 
@@ -231,36 +297,79 @@ void SudokuSolver::connectSignals()
     // Device control buttons
     connect(androidConnectButton, &QPushButton::clicked, this, &SudokuSolver::connectAndroidDevice);
     connect(gcodeSendButton, &QPushButton::clicked, this, &SudokuSolver::sendGcode);
-}
-
-// Sudoku solving algorithm implementation
-constexpr std::size_t SudokuSolver::get_cell(std::size_t row, std::size_t col) noexcept
-{
-    return (row / 3) * 3 + col / 3;
-}
-
-constexpr std::size_t SudokuSolver::get_next_row(std::size_t row, std::size_t col) noexcept
-{
-    return row + (col + 1) / 9;
-}
-
-constexpr std::size_t SudokuSolver::get_next_col(std::size_t col) noexcept
-{
-    return (col + 1) % 9;
-}
-
-std::pair<std::size_t, std::size_t> SudokuSolver::next_empty_position(
-    std::vector<std::vector<char>> &board, std::size_t row, std::size_t col) noexcept
-{
-    while (row != 9) {
-        if (board[row][col] == '.') {
-            return {row, col};
+    
+    // Install event filter for arrow key navigation
+    for (int row = 0; row < 9; ++row) {
+        for (int col = 0; col < 9; ++col) {
+            if (inputGrid[row][col]) {
+                inputGrid[row][col]->installEventFilter(this);
+            }
         }
-        row = get_next_row(row, col);
-        col = get_next_col(col);
     }
-    return {9, 0};
 }
+
+bool SudokuSolver::eventFilter(QObject *obj, QEvent *event)
+{
+    if (event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+        QLineEdit *edit = qobject_cast<QLineEdit*>(obj);
+        
+        if (edit) {
+            int row = edit->property("row").toInt();
+            int col = edit->property("col").toInt();
+            
+            switch (keyEvent->key()) {
+                case Qt::Key_Up:
+                    if (row > 0) {
+                        inputGrid[row-1][col]->setFocus();
+                        inputGrid[row-1][col]->selectAll();
+                    }
+                    return true;
+                    
+                case Qt::Key_Down:
+                    if (row < 8) {
+                        inputGrid[row+1][col]->setFocus();
+                        inputGrid[row+1][col]->selectAll();
+                    }
+                    return true;
+                    
+                case Qt::Key_Left:
+                    if (col > 0) {
+                        inputGrid[row][col-1]->setFocus();
+                        inputGrid[row][col-1]->selectAll();
+                    }
+                    return true;
+                    
+                case Qt::Key_Right:
+                    if (col < 8) {
+                        inputGrid[row][col+1]->setFocus();
+                        inputGrid[row][col+1]->selectAll();
+                    }
+                    return true;
+                    
+                case Qt::Key_Backspace:
+                    if (edit->text().isEmpty() && col > 0) {
+                        // Move to previous cell on backspace when empty
+                        inputGrid[row][col-1]->setFocus();
+                        inputGrid[row][col-1]->selectAll();
+                        return false; // Let default backspace handling occur
+                    }
+                    break;
+                    
+                case Qt::Key_Delete:
+                    edit->clear();
+                    return true;
+                    
+                default:
+                    break;
+            }
+        }
+    }
+    
+    // Standard event processing
+    return QWidget::eventFilter(obj, event);
+}
+
 
 bool SudokuSolver::solve(std::vector<std::vector<char>> &board, std::size_t row_start, std::size_t col_start,
                          std::array<std::bitset<9>, 9> &row_contains,
@@ -298,6 +407,7 @@ bool SudokuSolver::solve(std::vector<std::vector<char>> &board, std::size_t row_
     return false;
 }
 
+
 bool SudokuSolver::solveSudokuInternal(std::vector<std::vector<char>> &board)
 {
     std::array<std::bitset<9>, 9> row_contains = {0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -318,6 +428,7 @@ bool SudokuSolver::solveSudokuInternal(std::vector<std::vector<char>> &board)
     }
     return solve(board, 0, 0, row_contains, col_contains, cell_contains);
 }
+
 
 void SudokuSolver::solveSudoku()
 {
@@ -347,9 +458,33 @@ void SudokuSolver::solveSudoku()
                 );
             }
         }
-        QMessageBox::information(this, "Success", "Sudoku solved successfully! 🎉");
+        qDebug() << "Sudoku solved successfully! 🎉";
+        //QMessageBox::information(this, "Success", "Sudoku solved successfully! 🎉");
+
+       // QMessageBox *msg = new QMessageBox(this);
+       // msg->setWindowTitle("Success");
+       // msg->setText("Sudoku solved successfully! 🎉");
+       // msg->setIcon(QMessageBox::Information);
+       // msg->setStandardButtons(QMessageBox::NoButton);  // no OK button
+       // msg->show();
+       // 
+       // // auto close after 2 seconds
+       // QTimer::singleShot(500, msg, &QMessageBox::close);
+
     } else {
-        QMessageBox::warning(this, "Error", "No solution found for this Sudoku puzzle! ❌");
+
+        qDebug() << "No solution found for this Sudoku puzzle! ❌";
+        //QMessageBox::warning(this, "Error", "No solution found for this Sudoku puzzle! ❌");
+        
+       // QMessageBox *msg = new QMessageBox(this);
+       // msg->setWindowTitle("Error");
+       // msg->setText("No solution found for this Sudoku puzzle! ❌");
+       // msg->setIcon(QMessageBox::Information);
+       // msg->setStandardButtons(QMessageBox::NoButton);  // no OK button
+       // msg->show();
+       // 
+       // // auto close after 2 seconds
+       // QTimer::singleShot(500, msg, &QMessageBox::close);
     }
 }
 
@@ -381,6 +516,10 @@ void SudokuSolver::clearGrid()
         }
     }
     outputTextEdit->clear();
+
+    // --- delete file.txt ---
+    QFile::remove("file.txt");
+    //QFile::remove("file.txt"); automatically deletes the file if it exists.
 }
 
 void SudokuSolver::generateOutput()
@@ -389,33 +528,53 @@ void SudokuSolver::generateOutput()
     
     for (int row = 0; row < 9; ++row) {
         for (int col = 0; col < 9; ++col) {
+
             QString style = inputGrid[row][col]->styleSheet();
             QString currentValue = inputGrid[row][col]->text().trimmed();
-            
+
             if (style.contains("background-color: #e8f5e8") && !currentValue.isEmpty()) {
                 output += currentValue;
             } else {
                 output += "#";
             }
         }
-        
-        if (row < 8) {
+
+        if (row < 8)
             output += "\n";
-        }
     }
-    
+
     outputTextEdit->setPlainText(output);
-    
-    // Save to file
+
     QFile file("file.txt");
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+
         QTextStream stream(&file);
         stream << output;
         file.close();
-        
-        QMessageBox::information(this, "Success", "Solution saved to 'file_solution.txt' ✅");
+
+        qDebug() << "Solution saved to 'file_solution.txt";
+        //// --- Auto close info box ---
+        //QMessageBox *msg = new QMessageBox(this);
+        //msg->setWindowTitle("Success");
+        //msg->setText("Solution saved to 'file_solution.txt' ✅");
+        //msg->setIcon(QMessageBox::Information);
+        //msg->setStandardButtons(QMessageBox::NoButton);
+        //msg->show();
+        //QTimer::singleShot(500, msg, &QMessageBox::close);
+
     } else {
-        QMessageBox::warning(this, "Error", "Could not save to file! ❌");
+
+        qDebug() << "Could not save to file! ❌";
+
+        //// --- Auto close warning box ---
+        //QMessageBox *msg = new QMessageBox(this);
+        //msg->setWindowTitle("Error");
+        //msg->setText("Could not save to file! ❌");
+        //msg->setIcon(QMessageBox::Warning);
+        //msg->setStandardButtons(QMessageBox::NoButton);
+        //msg->show();
+
+        //QTimer::singleShot(500, msg, &QMessageBox::close);
     }
 }
 
@@ -525,4 +684,32 @@ void SudokuSolver::onProcessError(QProcess::ProcessError error)
     
     statusLabel->setText("❌ " + errorMsg);
     statusLabel->setStyleSheet("font-size: 14px; padding: 8px; background-color: #FFEBEE; border: 1px solid #F44336; border-radius: 5px;");
+}
+
+constexpr std::size_t SudokuSolver::get_cell(std::size_t row, std::size_t col) noexcept
+{
+    return (row / 3) * 3 + col / 3;
+}
+
+constexpr std::size_t SudokuSolver::get_next_row(std::size_t row, std::size_t col) noexcept
+{
+    return row + (col + 1) / 9;
+}
+
+constexpr std::size_t SudokuSolver::get_next_col(std::size_t col) noexcept
+{
+    return (col + 1) % 9;
+}
+
+std::pair<std::size_t, std::size_t> SudokuSolver::next_empty_position(
+    std::vector<std::vector<char>> &board, std::size_t row, std::size_t col) noexcept
+{
+    while (row != 9) {
+        if (board[row][col] == '.') {
+            return {row, col};
+        }
+        row = get_next_row(row, col);
+        col = get_next_col(col);
+    }
+    return {9, 0};
 }
