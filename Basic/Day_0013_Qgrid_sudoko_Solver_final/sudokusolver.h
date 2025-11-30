@@ -13,6 +13,9 @@
 #include <bitset>
 #include <QKeyEvent>
 #include <QTimer>
+#include <chrono>
+#include <iostream>
+
 
 class SudokuSolver : public QWidget
 {
@@ -20,6 +23,9 @@ class SudokuSolver : public QWidget
 
 public:
     explicit SudokuSolver(QWidget *parent = nullptr);
+
+void printSolveTime(std::chrono::high_resolution_clock::time_point start_time,
+                    std::chrono::high_resolution_clock::time_point end_time);
     
 private slots:
     void solveSudoku();

@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QDebug>
 
+
 SudokuSolver::SudokuSolver(QWidget *parent) : QWidget(parent), process(nullptr)
 {
     // Initialize grid to nullptr
@@ -371,41 +372,157 @@ bool SudokuSolver::eventFilter(QObject *obj, QEvent *event)
 }
 
 
-bool SudokuSolver::solve(std::vector<std::vector<char>> &board, std::size_t row_start, std::size_t col_start,
+//bool SudokuSolver::solve(std::vector<std::vector<char>> &board, std::size_t row_start, std::size_t col_start,
+//                         std::array<std::bitset<9>, 9> &row_contains,
+//                         std::array<std::bitset<9>, 9> &col_contains,
+//                         std::array<std::bitset<9>, 9> &cell_contains) noexcept
+//{
+//    auto [row, col] = next_empty_position(board, row_start, col_start);
+//
+//    if (row == 9) {
+//        return true;
+//    }
+//
+//    std::size_t const cell = get_cell(row, col);
+//    std::bitset<9> const contains = row_contains[row] | col_contains[col] | cell_contains[cell];
+//    if (contains.all()) {
+//        return false;
+//    }
+//
+//    for (std::size_t digit_idx = 0; digit_idx < 9; ++digit_idx) {
+//        if (!contains[digit_idx]) {
+//            board[row][col] = static_cast<char>(digit_idx + '1');
+//            row_contains[row].set(digit_idx);
+//            col_contains[col].set(digit_idx);
+//            cell_contains[cell].set(digit_idx);
+//            if (solve(board, row, col, row_contains, col_contains, cell_contains)) {
+//                return true;
+//            }
+//
+//            row_contains[row].reset(digit_idx);
+//            col_contains[col].reset(digit_idx);
+//            cell_contains[cell].reset(digit_idx);
+//        }
+//    }
+//    board[row][col] = '.';
+//    return false;
+//}
+//
+
+#include <iomanip>
+#include <iostream>
+#include <chrono>
+
+void SudokuSolver::printSolveTime(std::chrono::high_resolution_clock::time_point start_time,
+                                  std::chrono::high_resolution_clock::time_point end_time)
+{
+    using namespace std;
+
+    // Calculate durations
+    auto duration = end_time - start_time;
+    auto ns  = chrono::duration_cast<chrono::nanoseconds>(duration).count();
+    auto us  = chrono::duration_cast<chrono::microseconds>(duration).count();
+    auto ms  = chrono::duration_cast<chrono::milliseconds>(duration).count();
+    // Use double for high-precision seconds calculation
+    double sec = (double)ns / 1e9; 
+
+    // --- Output Table ---
+    
+    // Total width of the table is 32 characters: 15 (label) + 1 (sep) + 13 (value+unit) + 3 (borders)
+    const int LABEL_WIDTH = 15;
+    const int VALUE_WIDTH = 10;
+
+    cout << "\n";
+    cout << "┌─────────────────────────────────┐\n";
+    cout << "│      Sudoku Solve Time          │\n";
+    cout << "├─────────────────┬───────────────┤\n"; // 17 + 15 = 32
+
+    // Lambda function to print a row
+    auto printRow = [&](const char* label, auto value, const char* unit) {
+        cout << "│ " << setw(LABEL_WIDTH) << left << label 
+             << " │ "
+             << setw(VALUE_WIDTH) << right << value << " " << unit
+             << " │\n";
+    };
+
+    // Use std::fixed and std::setprecision for the seconds value
+    // Set precision to 9 decimal places (matching nanosecond precision)
+    cout << "│ " << setw(LABEL_WIDTH) << left << "Seconds"
+         << " │ "
+         << fixed << setprecision(9) << setw(VALUE_WIDTH + 1) << right << sec << " s" // +1 to offset the space used by the unit 's' (vs 'ms', 'µs', 'ns')
+         << " │\n";
+
+    // Print other rows
+    printRow("Milliseconds", ms, "ms");
+    printRow("Microseconds", us, "us"); // Using 'us' instead of 'µs' for better compatibility
+    printRow("Nanoseconds",  ns, "ns");
+
+    cout << "└─────────────────┴───────────────┘\n";
+    cout << "\n";
+}
+
+
+
+bool SudokuSolver::solve(std::vector<std::vector<char>> &board,
+                         std::size_t row_start, std::size_t col_start,
                          std::array<std::bitset<9>, 9> &row_contains,
                          std::array<std::bitset<9>, 9> &col_contains,
                          std::array<std::bitset<9>, 9> &cell_contains) noexcept
 {
+    // static: saved between recursive calls
+    static auto start_time = std::chrono::high_resolution_clock::now();
+    static bool first_call = true;
+
+    if (first_call) {
+        start_time = std::chrono::high_resolution_clock::now();
+        first_call = false;
+    }
+
     auto [row, col] = next_empty_position(board, row_start, col_start);
 
     if (row == 9) {
+
+        //printSolveTime
+        auto end_time = std::chrono::high_resolution_clock::now();
+        printSolveTime(start_time, end_time);
+
+
+        first_call = true; // reset for next puzzle
         return true;
     }
 
-    std::size_t const cell = get_cell(row, col);
-    std::bitset<9> const contains = row_contains[row] | col_contains[col] | cell_contains[cell];
-    if (contains.all()) {
+    std::size_t cell = get_cell(row, col);
+    std::bitset<9> used = row_contains[row] | col_contains[col] | cell_contains[cell];
+    if (used.all()) {
         return false;
     }
 
-    for (std::size_t digit_idx = 0; digit_idx < 9; ++digit_idx) {
-        if (!contains[digit_idx]) {
-            board[row][col] = static_cast<char>(digit_idx + '1');
-            row_contains[row].set(digit_idx);
-            col_contains[col].set(digit_idx);
-            cell_contains[cell].set(digit_idx);
+    for (std::size_t d = 0; d < 9; ++d) {
+        if (!used[d]) {
+            board[row][col] = static_cast<char>(d + '1');
+            row_contains[row].set(d);
+            col_contains[col].set(d);
+            cell_contains[cell].set(d);
+
             if (solve(board, row, col, row_contains, col_contains, cell_contains)) {
                 return true;
             }
 
-            row_contains[row].reset(digit_idx);
-            col_contains[col].reset(digit_idx);
-            cell_contains[cell].reset(digit_idx);
+            row_contains[row].reset(d);
+            col_contains[col].reset(d);
+            cell_contains[cell].reset(d);
         }
     }
+
     board[row][col] = '.';
     return false;
 }
+
+
+
+
+
+
 
 
 bool SudokuSolver::solveSudokuInternal(std::vector<std::vector<char>> &board)
@@ -458,12 +575,12 @@ void SudokuSolver::solveSudoku()
                 );
             }
         }
-        qDebug() << "Sudoku solved successfully! 🎉";
-        //QMessageBox::information(this, "Success", "Sudoku solved successfully! 🎉");
+        qDebug() << "Sudoku solved successfully! ";
+        //QMessageBox::information(this, "Success", "Sudoku solved successfully! ");
 
        // QMessageBox *msg = new QMessageBox(this);
        // msg->setWindowTitle("Success");
-       // msg->setText("Sudoku solved successfully! 🎉");
+       // msg->setText("Sudoku solved successfully! ");
        // msg->setIcon(QMessageBox::Information);
        // msg->setStandardButtons(QMessageBox::NoButton);  // no OK button
        // msg->show();
