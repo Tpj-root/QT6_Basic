@@ -1,0 +1,18 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/icons">
+        <file>app-icon.png</file>
+        <file>open.png</file>
+        <file>save.png</file>
+        <file>zoom-in.png</file>
+        <file>zoom-out.png</file>
+        <file>zoom-fit.png</file>
+        <file>zoom-original.png</file>
+        <file>process.png</file>
+        <file>preview.png</file>
+        <file>reset.png</file>
+    </qresource>
+    <qresource prefix="/styles">
+        <file>dark.qss</file>
+    </qresource>
+</RCC>
